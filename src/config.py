@@ -5,7 +5,7 @@ from pathlib import Path
 DB_CONFIG = {
     'dbname': 'broadband_db',
     'user': 'postgres',
-    'password': 'p3lg3nwork;',
+    'password': 'topsykret',
     'host': 'localhost'
 }
 

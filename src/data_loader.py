@@ -3,6 +3,9 @@ import psycopg2
 import pyzipper
 import geopandas as gpd
 from pathlib import Path
+import tempfile
+import shutil
+import os
 from config import DB_CONFIG, FCC_DATA_DIR, CENSUS_DATA_DIR
 from typing import List, Dict, Optional
 import csv
@@ -19,41 +22,52 @@ class DataLoader:
     
     def load_census_blocks(self):
         """Load census block shapefile into database"""
+        temp_dir = None
         try:
             shapefile_path = next(CENSUS_DATA_DIR.glob('*.zip'))
             
+            # Create temporary directory
+            temp_dir = tempfile.mkdtemp()
+            
+            # Extract the entire zip to temp directory
             with pyzipper.AESZipFile(shapefile_path) as zf:
-                # Find the .shp file in the zip
-                shp_file = next(f for f in zf.namelist() if f.endswith('.shp'))
+                zf.extractall(temp_dir)
+            
+            # Find the .shp file in the extracted files
+            shp_files = list(Path(temp_dir).glob('*.shp'))
+            if not shp_files:
+                raise ValueError("No shapefile found in the census blocks zip")
+            
+            # Read the shapefile
+            gdf = gpd.read_file(shp_files[0])
+            
+            # Filter and rename columns
+            gdf = gdf[['GEOID20', 'geometry']].rename(columns={'GEOID20': 'geoid'})
+            
+            # Save to database
+            with self.conn.cursor() as cursor:
+                # Clear existing data
+                cursor.execute("TRUNCATE census_blocks")
                 
-                # Extract to memory
-                with zf.open(shp_file) as f:
-                    # Read into GeoDataFrame
-                    gdf = gpd.read_file(f)
-                    
-                    # Filter and rename columns
-                    gdf = gdf[['GEOID20', 'geometry']].rename(columns={'GEOID20': 'geoid'})
-                    
-                    # Save to database
-                    with self.conn.cursor() as cursor:
-                        # Clear existing data
-                        cursor.execute("TRUNCATE census_blocks")
-                        
-                        # Insert new data
-                        for _, row in gdf.iterrows():
-                            cursor.execute("""
-                            INSERT INTO census_blocks (geoid, geometry)
-                            VALUES (%s, ST_GeomFromText(%s, 4326))
-                            ON CONFLICT (geoid) DO NOTHING
-                            """, (row['geoid'], row['geometry'].wkt))
-                        
-                        self.conn.commit()
-                        print(f"Loaded {len(gdf)} census blocks")
-                        
+                # Insert new data
+                for _, row in gdf.iterrows():
+                    cursor.execute("""
+                    INSERT INTO census_blocks (geoid, geometry)
+                    VALUES (%s, ST_GeomFromText(%s, 4326))
+                    ON CONFLICT (geoid) DO NOTHING
+                    """, (row['geoid'], row['geometry'].wkt))
+                
+                self.conn.commit()
+                print(f"Loaded {len(gdf)} census blocks")
+                
         except Exception as e:
             print(f"Error loading census blocks: {e}")
             self.conn.rollback()
             raise
+        finally:
+            # Clean up temporary directory
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir)
     
     def load_fcc_data(self):
         """Load all FCC broadband data files"""

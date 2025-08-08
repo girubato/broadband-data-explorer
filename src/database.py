@@ -1,6 +1,8 @@
+# src/database.py
 import psycopg2
-from psycopg2 import sql
+from psycopg2 import sql, errors
 from config import DB_CONFIG
+import sys
 
 def create_database():
     """Create the PostgreSQL database and tables with PostGIS extension"""
@@ -16,15 +18,24 @@ def create_database():
         conn.autocommit = True
         cursor = conn.cursor()
         
-        # Create database if it doesn't exist
-        cursor.execute(sql.SQL("CREATE DATABASE {}").format(
-            sql.Identifier(DB_CONFIG['dbname'])
-        ))
-        print(f"Database {DB_CONFIG['dbname']} created successfully")
+        # Check if database exists
+        cursor.execute("SELECT 1 FROM pg_database WHERE datname = %s", 
+                      (DB_CONFIG['dbname'],))
+        exists = cursor.fetchone()
+        
+        if not exists:
+            # Create database if it doesn't exist
+            cursor.execute(sql.SQL("CREATE DATABASE {}").format(
+                sql.Identifier(DB_CONFIG['dbname'])
+            ))
+            print(f"Database {DB_CONFIG['dbname']} created successfully")
+        else:
+            print(f"Database {DB_CONFIG['dbname']} already exists")
+            
         cursor.close()
         conn.close()
         
-        # Now connect to our new database to create tables
+        # Now connect to our database to create tables
         conn = psycopg2.connect(**DB_CONFIG)
         cursor = conn.cursor()
         
@@ -75,8 +86,40 @@ def create_database():
         conn.commit()
         print("Tables created successfully")
         
+    except errors.DuplicateDatabase:
+        print("Database already exists - continuing")
     except Exception as e:
         print(f"Error creating database: {e}")
+        sys.exit(1)
+    finally:
+        if conn:
+            cursor.close()
+            conn.close()
+
+def verify_tables_exist():
+    """Verify that all required tables exist"""
+    required_tables = ['providers', 'census_blocks', 'broadband_data']
+    conn = None
+    try:
+        conn = psycopg2.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        
+        for table in required_tables:
+            cursor.execute("""
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_name = %s
+            );
+            """, (table,))
+            exists = cursor.fetchone()[0]
+            if not exists:
+                print(f"Error: Table '{table}' does not exist")
+                return False
+                
+        return True
+    except Exception as e:
+        print(f"Error verifying tables: {e}")
+        return False
     finally:
         if conn:
             cursor.close()
@@ -84,3 +127,8 @@ def create_database():
 
 if __name__ == "__main__":
     create_database()
+    if verify_tables_exist():
+        print("Database setup complete - all tables exist")
+    else:
+        print("Database setup encountered issues")
+        sys.exit(1)
