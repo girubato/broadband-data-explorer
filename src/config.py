@@ -5,7 +5,7 @@ from pathlib import Path
 DB_CONFIG = {
     'dbname': 'broadband_db',
     'user': 'postgres',
-    'password': 'topsykret',
+    'password': 'p3lg3nwork;',
     'host': 'localhost'
 }
 
@@ -16,5 +16,5 @@ FCC_DATA_DIR = DATA_DIR / 'fcc_data'
 CENSUS_DATA_DIR = DATA_DIR / 'census_blocks'
 
 # Map configuration
-MAP_CENTER = [41.5801, -71.4774]  # Default center (Rhode Island)
+MAP_CENTER = [41.5801, -71.4774] # Default center
 MAP_ZOOM = 11

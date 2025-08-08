@@ -33,7 +33,7 @@ class DataLoader:
             with pyzipper.AESZipFile(shapefile_path) as zf:
                 zf.extractall(temp_dir)
             
-            # Find the .shp file in the extracted files
+            # Find the .shp file
             shp_files = list(Path(temp_dir).glob('*.shp'))
             if not shp_files:
                 raise ValueError("No shapefile found in the census blocks zip")
@@ -44,10 +44,11 @@ class DataLoader:
             # Filter and rename columns
             gdf = gdf[['GEOID20', 'geometry']].rename(columns={'GEOID20': 'geoid'})
             
-            # Save to database
+            # Save to database - use DELETE instead of TRUNCATE
             with self.conn.cursor() as cursor:
-                # Clear existing data
-                cursor.execute("TRUNCATE census_blocks")
+                # Clear tables in proper order
+                cursor.execute("DELETE FROM broadband_data")  # Clear child table first
+                cursor.execute("DELETE FROM census_blocks")  # Then clear parent table
                 
                 # Insert new data
                 for _, row in gdf.iterrows():
@@ -125,26 +126,50 @@ class DataLoader:
         return providers
     
     def _process_broadband_data(self, df: pd.DataFrame, tech_type: str) -> pd.DataFrame:
-        """Process broadband data"""
-        # Select and rename columns
-        data = df[[
-            'provider_id', 'location_id', 'block_geoid', 
+        """Process broadband data with proper type conversion"""
+        # Convert data types
+        df = df.astype({
+            'frn': 'int64',
+            'provider_id': 'int64',
+            'brand_name': 'str',
+            'location_id': 'int64',
+            'technology': 'int64',
+            'max_advertised_download_speed': 'int64',
+            'max_advertised_upload_speed': 'int64',
+            'low_latency': 'int64',  # Will convert to boolean later
+            'business_residential_code': 'str',
+            'state_usps': 'str',
+            'block_geoid': 'int64',
+            'h3_res8_id': 'str'
+        })
+        
+        # Convert low_latency to boolean (assuming 1=True, 0=False)
+        df['low_latency'] = df['low_latency'].astype(bool)
+        
+        # Convert business_residential_code (assuming 'R'=Residential, 'B'=Business, 'X'=Mixed Use)
+        df['business_residential_code'] = df['business_residential_code'].replace({
+            'R': 'Residential',
+            'B': 'Business',
+            'X': 'Mixed Use (Residential and Business)'
+        })
+        
+        return df[[
+            'frn', 'provider_id', 'brand_name', 'location_id', 'technology',
             'max_advertised_download_speed', 'max_advertised_upload_speed',
-            'low_latency', 'business_residential_code', 'state_usps', 'h3_res8_id'
-        ]].copy()
-        
-        # Add technology type
-        data['technology'] = tech_type
-        
-        return data
+            'low_latency', 'business_residential_code', 'state_usps',
+            'block_geoid', 'h3_res8_id'
+        ]]
     
     def _save_providers(self, providers_df: pd.DataFrame):
-        """Save providers to database"""
+        """Save providers to database with proper type handling"""
         if providers_df.empty:
             return
             
+        # Ensure provider_id is string type
+        providers_df['provider_id'] = providers_df['provider_id'].astype(str)
+        
         with self.conn.cursor() as cursor:
-            # Create temp table
+            # Create temp table with matching types
             cursor.execute("""
             CREATE TEMP TABLE temp_providers (
                 provider_id VARCHAR(255),
@@ -158,10 +183,13 @@ class DataLoader:
             INSERT INTO temp_providers VALUES (%s, %s)
             """, args)
             
-            # Merge with main table
+            # Merge with main table with explicit casting
             cursor.execute("""
             INSERT INTO providers 
-            SELECT * FROM temp_providers
+            SELECT 
+                provider_id::VARCHAR(255), 
+                brand_name::VARCHAR(255)
+            FROM temp_providers
             ON CONFLICT (provider_id) DO UPDATE
             SET brand_name = EXCLUDED.brand_name
             """)
@@ -170,23 +198,25 @@ class DataLoader:
             print(f"Saved {len(providers_df)} providers")
     
     def _save_broadband_data(self, broadband_df: pd.DataFrame):
-        """Save broadband data to database"""
+        """Save broadband data with proper type handling"""
         if broadband_df.empty:
             return
             
         with self.conn.cursor() as cursor:
-            # Create temp table
+            # Create temp table with matching types
             cursor.execute("""
             CREATE TEMP TABLE temp_broadband (
-                provider_id VARCHAR(255),
-                location_id VARCHAR(255),
-                block_geoid VARCHAR(20),
-                technology VARCHAR(100),
-                max_advertised_download_speed DECIMAL(10, 2),
-                max_advertised_upload_speed DECIMAL(10, 2),
+                frn BIGINT,
+                provider_id BIGINT,
+                brand_name VARCHAR(255),
+                location_id BIGINT,
+                technology INTEGER,
+                max_advertised_download_speed INTEGER,
+                max_advertised_upload_speed INTEGER,
                 low_latency BOOLEAN,
-                business_residential_code INTEGER,
+                business_residential_code VARCHAR(255),
                 state_usps VARCHAR(2),
+                block_geoid BIGINT,
                 h3_res8_id VARCHAR(255)
             ) ON COMMIT DROP
             """)
@@ -194,15 +224,16 @@ class DataLoader:
             # Bulk insert to temp table
             args = [tuple(x) for x in broadband_df.to_numpy()]
             cursor.executemany("""
-            INSERT INTO temp_broadband VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            INSERT INTO temp_broadband VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, args)
             
             # Merge with main table
             cursor.execute("""
             INSERT INTO broadband_data (
-                provider_id, location_id, block_geoid, technology,
+                frn, provider_id, brand_name, location_id, technology,
                 max_advertised_download_speed, max_advertised_upload_speed,
-                low_latency, business_residential_code, state_usps, h3_res8_id
+                low_latency, business_residential_code, state_usps,
+                block_geoid, h3_res8_id
             )
             SELECT * FROM temp_broadband
             ON CONFLICT (provider_id, location_id, block_geoid) DO NOTHING

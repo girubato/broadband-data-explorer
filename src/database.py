@@ -63,15 +63,17 @@ def create_database():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS broadband_data (
             id SERIAL PRIMARY KEY,
-            provider_id VARCHAR(255) REFERENCES providers(provider_id),
-            location_id VARCHAR(255),
-            block_geoid VARCHAR(20) REFERENCES census_blocks(geoid),
-            technology VARCHAR(100),
-            max_advertised_download_speed DECIMAL(10, 2),
-            max_advertised_upload_speed DECIMAL(10, 2),
+            frn BIGINT,
+            provider_id BIGINT,
+            brand_name VARCHAR(255),
+            location_id BIGINT,
+            technology INTEGER,
+            max_advertised_download_speed INTEGER,
+            max_advertised_upload_speed INTEGER,
             low_latency BOOLEAN,
-            business_residential_code INTEGER,
+            business_residential_code VARCHAR(255),
             state_usps VARCHAR(2),
+            block_geoid BIGINT,
             h3_res8_id VARCHAR(255),
             UNIQUE(provider_id, location_id, block_geoid)
         );
