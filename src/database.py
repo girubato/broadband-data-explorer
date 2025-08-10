@@ -45,7 +45,7 @@ def create_database():
         # Create providers table
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS providers (
-            provider_id VARCHAR(255) PRIMARY KEY,
+            provider_id BIGINT PRIMARY KEY,
             brand_name VARCHAR(255),
             UNIQUE(provider_id)
         );
@@ -54,7 +54,7 @@ def create_database():
         # Create census blocks table with geometry
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS census_blocks (
-            geoid VARCHAR(20) PRIMARY KEY,
+            geoid BIGINT PRIMARY KEY,
             geometry GEOMETRY(MULTIPOLYGON, 4326)
         );
         """)
@@ -64,7 +64,7 @@ def create_database():
         CREATE TABLE IF NOT EXISTS broadband_data (
             id SERIAL PRIMARY KEY,
             frn BIGINT,
-            provider_id BIGINT,
+            provider_id BIGINT REFERENCES providers(provider_id),
             brand_name VARCHAR(255),
             location_id BIGINT,
             technology INTEGER,

@@ -20,55 +20,92 @@ class DataLoader:
         self.load_census_blocks()
         self.load_fcc_data()
     
+    # def load_census_blocks(self):
+    #     """Load census block shapefile into database"""
+    #     temp_dir = None
+    #     try:
+    #         shapefile_path = next(CENSUS_DATA_DIR.glob('*.zip'))
+            
+    #         # Create temporary directory
+    #         temp_dir = tempfile.mkdtemp()
+            
+    #         # Extract the entire zip to temp directory
+    #         with pyzipper.AESZipFile(shapefile_path) as zf:
+    #             zf.extractall(temp_dir)
+            
+    #         # Find the .shp file
+    #         shp_files = list(Path(temp_dir).glob('*.shp'))
+    #         if not shp_files:
+    #             raise ValueError("No shapefile found in the census blocks zip")
+            
+    #         # Read the shapefile
+    #         gdf = gpd.read_file(shp_files[0])
+            
+    #         # Filter and rename columns
+    #         gdf = gdf[['GEOID20', 'geometry']].rename(columns={'GEOID20': 'geoid'})
+            
+    #         with self.conn.cursor() as cursor:
+    #             # Clear tables in proper order
+    #             cursor.execute("DELETE FROM broadband_data")
+    #             cursor.execute("DELETE FROM census_blocks")
+                
+    #             # Insert new data
+    #             for _, row in gdf.iterrows():
+    #                 cursor.execute("""
+    #                 INSERT INTO census_blocks (geoid, geometry)
+    #                 VALUES (%s, ST_GeomFromText(%s, 4326))
+    #                 ON CONFLICT (geoid) DO NOTHING
+    #                 """, (row['geoid'], row['geometry'].wkt))
+                
+    #             self.conn.commit()
+    #             print(f"Loaded {len(gdf)} census blocks")
+                
+    #     except Exception as e:
+    #         print(f"Error loading census blocks: {e}")
+    #         self.conn.rollback()
+    #         raise
+    #     finally:
+    #         # Clean up temporary directory
+    #         if temp_dir and os.path.exists(temp_dir):
+    #             shutil.rmtree(temp_dir)
+
     def load_census_blocks(self):
-        """Load census block shapefile into database"""
-        temp_dir = None
+        """Load census blocks with proper type conversion"""
         try:
             shapefile_path = next(CENSUS_DATA_DIR.glob('*.zip'))
-            
-            # Create temporary directory
-            temp_dir = tempfile.mkdtemp()
-            
-            # Extract the entire zip to temp directory
             with pyzipper.AESZipFile(shapefile_path) as zf:
-                zf.extractall(temp_dir)
-            
-            # Find the .shp file
-            shp_files = list(Path(temp_dir).glob('*.shp'))
-            if not shp_files:
-                raise ValueError("No shapefile found in the census blocks zip")
-            
-            # Read the shapefile
-            gdf = gpd.read_file(shp_files[0])
-            
-            # Filter and rename columns
-            gdf = gdf[['GEOID20', 'geometry']].rename(columns={'GEOID20': 'geoid'})
-            
-            # Save to database - use DELETE instead of TRUNCATE
-            with self.conn.cursor() as cursor:
-                # Clear tables in proper order
-                cursor.execute("DELETE FROM broadband_data")  # Clear child table first
-                cursor.execute("DELETE FROM census_blocks")  # Then clear parent table
-                
-                # Insert new data
-                for _, row in gdf.iterrows():
-                    cursor.execute("""
-                    INSERT INTO census_blocks (geoid, geometry)
-                    VALUES (%s, ST_GeomFromText(%s, 4326))
-                    ON CONFLICT (geoid) DO NOTHING
-                    """, (row['geoid'], row['geometry'].wkt))
-                
-                self.conn.commit()
-                print(f"Loaded {len(gdf)} census blocks")
-                
+                # Extract to temp directory
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    zf.extractall(temp_dir)
+                    shp_file = next(Path(temp_dir).glob('*.shp'))
+                    
+                    # Read and convert GEOID20 to BIGINT
+                    gdf = gpd.read_file(shp_file)
+                    gdf['GEOID20'] = pd.to_numeric(gdf['GEOID20'], errors='coerce').dropna().astype('int64')
+                    gdf = gdf[['GEOID20', 'geometry']].rename(columns={'GEOID20': 'geoid'})
+                    
+                    # Save to database
+                    with self.conn.cursor() as cursor:
+                        cursor.execute("TRUNCATE broadband_data, census_blocks CASCADE")
+                        
+                        # Use execute_batch for better performance
+                        from psycopg2.extras import execute_batch
+                        execute_batch(
+                            cursor,
+                            """
+                            INSERT INTO census_blocks (geoid, geometry)
+                            VALUES (%s, ST_GeomFromText(%s, 4326))
+                            ON CONFLICT (geoid) DO NOTHING
+                            """,
+                            [(row['geoid'], row['geometry'].wkt) for _, row in gdf.iterrows()]
+                        )
+                        self.conn.commit()
+                        print(f"Loaded {len(gdf)} census blocks with BIGINT geoids")
+
         except Exception as e:
             print(f"Error loading census blocks: {e}")
             self.conn.rollback()
             raise
-        finally:
-            # Clean up temporary directory
-            if temp_dir and os.path.exists(temp_dir):
-                shutil.rmtree(temp_dir)
     
     def load_fcc_data(self):
         """Load all FCC broadband data files"""
@@ -123,6 +160,13 @@ class DataLoader:
         """Process provider data"""
         # Get unique providers
         providers = df[['provider_id', 'brand_name']].drop_duplicates()
+
+        providers['provider_id'] = pd.to_numeric(
+            providers['provider_id'],
+            errors='coerce',
+            downcast='integer'
+        ).dropna().astype('int64')
+
         return providers
     
     def _process_broadband_data(self, df: pd.DataFrame, tech_type: str) -> pd.DataFrame:
@@ -161,41 +205,49 @@ class DataLoader:
         ]]
     
     def _save_providers(self, providers_df: pd.DataFrame):
-        """Save providers to database with proper type handling"""
+        """Save with explicit type casting"""
         if providers_df.empty:
             return
             
-        # Ensure provider_id is string type
-        providers_df['provider_id'] = providers_df['provider_id'].astype(str)
-        
         with self.conn.cursor() as cursor:
-            # Create temp table with matching types
+            # Create temp table with explicit types
             cursor.execute("""
             CREATE TEMP TABLE temp_providers (
-                provider_id VARCHAR(255),
+                provider_id BIGINT,
                 brand_name VARCHAR(255)
             ) ON COMMIT DROP
             """)
             
-            # Bulk insert to temp table
-            args = [tuple(x) for x in providers_df.to_numpy()]
-            cursor.executemany("""
-            INSERT INTO temp_providers VALUES (%s, %s)
-            """, args)
+            # Bulk insert with type validation
+            records = []
+            for _, row in providers_df.iterrows():
+                try:
+                    records.append((
+                        int(row['provider_id']), 
+                        str(row['brand_name']) if pd.notna(row['brand_name']) else None
+                    ))
+                except (ValueError, TypeError) as e:
+                    print(f"Skipping invalid provider record: {row} - Error: {e}")
+                    continue
             
-            # Merge with main table with explicit casting
+            # Use execute_values for better performance
+            from psycopg2.extras import execute_values
+            execute_values(
+                cursor,
+                "INSERT INTO temp_providers (provider_id, brand_name) VALUES %s",
+                records
+            )
+            
+            # Merge with main table
             cursor.execute("""
-            INSERT INTO providers 
-            SELECT 
-                provider_id::VARCHAR(255), 
-                brand_name::VARCHAR(255)
-            FROM temp_providers
+            INSERT INTO providers
+            SELECT provider_id, brand_name FROM temp_providers
             ON CONFLICT (provider_id) DO UPDATE
             SET brand_name = EXCLUDED.brand_name
             """)
             
             self.conn.commit()
-            print(f"Saved {len(providers_df)} providers")
+            print(f"Saved {len(records)} valid provider records")
     
     def _save_broadband_data(self, broadband_df: pd.DataFrame):
         """Save broadband data with proper type handling"""
