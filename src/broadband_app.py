@@ -112,12 +112,49 @@ class BroadbandApp(QMainWindow):
         filter_layout.addWidget(QLabel("Technology:"))
         self.tech_combo = QComboBox()
         self.tech_combo.addItem("All", None)
-        self.tech_combo.addItem("Cable", 50)
-        self.tech_combo.addItem("Fiber", 40)
-        self.tech_combo.addItem("Copper", 30)
-        self.tech_combo.addItem("Wireless", 70)
-        self.tech_combo.addItem("Satellite", 60)
+        
+        self.tech_combo.addItem("── Copper/DSL ──", None)  # Group header
+        self.tech_combo.addItem("Asymmetric xDSL (10)", 10)
+        self.tech_combo.addItem("ADSL2/ADSL2+ (11)", 11)
+        self.tech_combo.addItem("VDSL (12)", 12)
+        self.tech_combo.addItem("Symmetric xDSL (20)", 20)
+        self.tech_combo.addItem("Other Copper (30)", 30)
+        
+        self.tech_combo.addItem("── Cable ──", None)  # Group header
+        self.tech_combo.addItem("Cable Other (40)", 40)
+        self.tech_combo.addItem("DOCSIS 1/1.1/2.0 (41)", 41)
+        self.tech_combo.addItem("DOCSIS 3.0 (42)", 42)
+        self.tech_combo.addItem("DOCSIS 3.1 (43)", 43)
+        
+        self.tech_combo.addItem("── Fiber ──", None)  # Group header
+        self.tech_combo.addItem("Fiber (50)", 50)
+        
+        self.tech_combo.addItem("── Wireless ──", None)  # Group header
+        self.tech_combo.addItem("Terrestrial Fixed (70)", 70)
+        
+        self.tech_combo.addItem("── Satellite ──", None)  # Group header
+        self.tech_combo.addItem("Satellite (60)", 60)
+        
+        self.tech_combo.addItem("── Other ──", None)  # Group header
+        self.tech_combo.addItem("Power Line (90)", 90)
+        self.tech_combo.addItem("All Other (0)", 0)
+        
         filter_layout.addWidget(self.tech_combo)
+
+        # 10: "Asymmetric xDSL",
+        # 11: "ADSL2, ADSL2+",
+        # 12: "VDSL",
+        # 20: "Symmetric xDSL",
+        # 30: "Other Copper Wireline",
+        # 40: "Cable Modem other than DOCSIS 1, 1.1, 2.0, 3.0, or 3.1",
+        # 41: "Cable Modem – DOCSIS 1, 1.1 or 2.0",
+        # 42: "Cable Modem – DOCSIS 3.0",
+        # 43: "Cable Modem – DOCSIS 3.1",
+        # 50: "Optical Carrier / Fiber to the end user",
+        # 60: "Satellite",
+        # 70: "Terrestrial Fixed Wireless",
+        # 90: "Electric Power Line",
+        # 0: "All Other"
         
         # Speed filter
         filter_layout.addWidget(QLabel("Min Download (Mbps):"))
@@ -243,7 +280,7 @@ class BroadbandApp(QMainWindow):
                 f"Check console for more details"
             )
             self.status_label.setText("Import failed")
-            print(f"Detailed error: {e}")  # This will show in console
+            print(f"Detailed error: {e}")
     
     def create_map(self, filters=None):
         """Create or update the map"""
