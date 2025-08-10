@@ -10,7 +10,8 @@ A Python application for exploring FCC broadband data with a GUI interface.
 - Filterable data table and map view
 
 ## Screenshots
-<img width="1208" src="https://github.com/user-attachments/assets/3c3c4c01-69eb-4001-8a04-5b35253f0ddd" />
+<img width="1200" src="https://github.com/user-attachments/assets/890cfde0-5a17-4634-be86-2452a7e8f434" />
+<img width="1200" src="https://github.com/user-attachments/assets/3c3c4c01-69eb-4001-8a04-5b35253f0ddd" />
 <img width="918" src="https://github.com/user-attachments/assets/b3aab8e5-04ad-4c6f-ae79-65024e747173" />
 
 ## Installation
