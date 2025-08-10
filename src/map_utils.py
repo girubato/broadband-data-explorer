@@ -46,11 +46,11 @@ class MapBuilder:
         # Apply filters
         if filters.get('provider_id'):
             query += " AND b.provider_id = %s"
-            params.append(filters['provider_id'])
+            params.append(int(filters['provider_id']))
             
         if filters.get('technology'):
             query += " AND b.technology = %s"
-            params.append(filters['technology'])
+            params.append(int(filters['technology']))
             
         if filters.get('min_download_speed'):
             query += " AND b.max_advertised_download_speed >= %s"
@@ -62,6 +62,7 @@ class MapBuilder:
             data = cursor.fetchall()
             
             if not data:
+                print("No data matching filters")
                 return
                 
             # Prepare data for FastMarkerCluster

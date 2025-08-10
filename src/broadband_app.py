@@ -112,11 +112,11 @@ class BroadbandApp(QMainWindow):
         filter_layout.addWidget(QLabel("Technology:"))
         self.tech_combo = QComboBox()
         self.tech_combo.addItem("All", None)
-        self.tech_combo.addItem("Fiber", "Fiber")
-        self.tech_combo.addItem("Cable", "Cable")
-        self.tech_combo.addItem("Copper", "Copper")
-        self.tech_combo.addItem("Fixed Wireless", "Fixed Wireless")
-        self.tech_combo.addItem("Satellite", "Satellite")
+        self.tech_combo.addItem("Cable", 50)
+        self.tech_combo.addItem("Fiber", 40)
+        self.tech_combo.addItem("Copper", 30)
+        self.tech_combo.addItem("Wireless", 70)
+        self.tech_combo.addItem("Satellite", 60)
         filter_layout.addWidget(self.tech_combo)
         
         # Speed filter
@@ -291,6 +291,7 @@ class BroadbandApp(QMainWindow):
             filters = {}
             
         try:
+            self.conn.rollback()
             query = """
             SELECT 
                 p.brand_name, b.block_geoid, b.technology,
@@ -305,11 +306,11 @@ class BroadbandApp(QMainWindow):
             # Apply filters
             if filters.get('provider_id'):
                 query += " AND b.provider_id = %s"
-                params.append(filters['provider_id'])
+                params.append(int(filters['provider_id']))
                 
             if filters.get('technology'):
                 query += " AND b.technology = %s"
-                params.append(filters['technology'])
+                params.append(int(filters['technology']))
                 
             if filters.get('min_download_speed'):
                 query += " AND b.max_advertised_download_speed >= %s"
