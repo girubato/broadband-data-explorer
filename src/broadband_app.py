@@ -112,7 +112,7 @@ class BroadbandApp(QMainWindow):
         filter_layout.addWidget(QLabel("Technology:"))
         self.tech_combo = QComboBox()
         self.tech_combo.addItem("All", None)
-        
+
         self.tech_combo.addItem("── Copper/DSL ──", None)  # Group header
         self.tech_combo.addItem("Asymmetric xDSL (10)", 10)
         self.tech_combo.addItem("ADSL2/ADSL2+ (11)", 11)
@@ -140,21 +140,6 @@ class BroadbandApp(QMainWindow):
         self.tech_combo.addItem("All Other (0)", 0)
         
         filter_layout.addWidget(self.tech_combo)
-
-        # 10: "Asymmetric xDSL",
-        # 11: "ADSL2, ADSL2+",
-        # 12: "VDSL",
-        # 20: "Symmetric xDSL",
-        # 30: "Other Copper Wireline",
-        # 40: "Cable Modem other than DOCSIS 1, 1.1, 2.0, 3.0, or 3.1",
-        # 41: "Cable Modem – DOCSIS 1, 1.1 or 2.0",
-        # 42: "Cable Modem – DOCSIS 3.0",
-        # 43: "Cable Modem – DOCSIS 3.1",
-        # 50: "Optical Carrier / Fiber to the end user",
-        # 60: "Satellite",
-        # 70: "Terrestrial Fixed Wireless",
-        # 90: "Electric Power Line",
-        # 0: "All Other"
         
         # Speed filter
         filter_layout.addWidget(QLabel("Min Download (Mbps):"))
